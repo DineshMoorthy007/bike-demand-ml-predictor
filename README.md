@@ -44,6 +44,33 @@ Core workflow:
 - Joblib
 - Docker
 
+## Dataset Setup (Required)
+
+This repository does not include the dataset file. You must download it locally before training or inference.
+
+### Source
+
+- UCI Bike Sharing Dataset: https://archive.ics.uci.edu/dataset/275/bike+sharing+dataset
+
+### Option 1: Manual setup
+
+1. Download the dataset ZIP from UCI.
+2. Extract the archive.
+3. Copy [hour.csv](data/hour.csv) into the project [data](data) folder.
+4. Final required path:
+
+       data/hour.csv
+
+### Option 2: PowerShell commands (Windows)
+
+Run these from the project root:
+
+    New-Item -ItemType Directory -Force data
+    Invoke-WebRequest -Uri "https://archive.ics.uci.edu/static/public/275/bike+sharing+dataset.zip" -OutFile "data/bike-sharing-dataset.zip"
+    Expand-Archive -Path "data/bike-sharing-dataset.zip" -DestinationPath "data" -Force
+
+After extraction, confirm [hour.csv](data/hour.csv) exists in [data](data).
+
 ## Usage
 
 ### 1. Install dependencies

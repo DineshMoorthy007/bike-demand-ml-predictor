@@ -1,49 +1,94 @@
 from __future__ import annotations
 
 from datetime import datetime
+import os
 from pathlib import Path
 from typing import Dict, List, Tuple
+from urllib.error import URLError
+from urllib.request import urlretrieve
 
 import joblib
 import pandas as pd
 import streamlit as st
 
-from data_pipeline import build_features_and_target, load_data
-
 MODEL_PATH = Path("models/xgb_bike_model.joblib")
-DATA_PATH = Path("data/hour.csv")
+MODEL_CACHE_DIR = Path(".cache/models")
+DEFAULT_MODEL_URL = "https://huggingface.co/dinesh-moorthy/bike-rental-model/resolve/main/xgb_bike_model.joblib"
+
+# These values are derived from the training data and allow inference without loading data/hour.csv.
+FEATURE_TEMPLATE_DEFAULTS: Dict[str, float] = {
+    "yr": 0.5025605615973301,
+    "mnth": 6.537775476149376,
+    "hr": 11.546751826917545,
+    "holiday": 0.028770355026181024,
+    "weekday": 3.003682605443351,
+    "workingday": 0.6827205247712756,
+    "temp": 0.0,
+    "atemp": 0.4757751021347604,
+    "hum": 0.0,
+    "windspeed": 0.0,
+    "casual": 35.67621842453536,
+    "registered": 153.78686920996606,
+    "day": 15.683411013291904,
+    "month": 6.537775476149376,
+    "season_1": 0.2440876920421198,
+    "season_2": 0.25369699062086426,
+    "season_3": 0.25870303239541975,
+    "season_4": 0.24351228494159619,
+    "weathersit_1": 0.656712123827608,
+    "weathersit_2": 0.26146498647793315,
+    "weathersit_3": 0.08165026756430174,
+    "weathersit_4": 0.00017262213015708613,
+}
+
+SCALER_STATS_DEFAULTS: Dict[str, float] = {
+    "temp_mean": 0.4969871684216583,
+    "temp_std": 0.19255058126205624,
+    "hum_mean": 0.6272288394038783,
+    "hum_std": 0.1929242833232444,
+    "windspeed_mean": 0.1900976063064618,
+    "windspeed_std": 0.12233670875034648,
+}
+
+
+def normalize_model_url(model_url: str, expected_filename: str) -> str:
+    """Convert Hugging Face tree URL to a direct resolve URL when needed."""
+    normalized = model_url.strip()
+
+    if "/tree/" in normalized:
+        normalized = normalized.replace("/tree/", "/resolve/")
+
+    if normalized.endswith("/main") or normalized.endswith("/main/"):
+        normalized = normalized.rstrip("/") + f"/{expected_filename}"
+
+    return normalized
 
 
 @st.cache_resource
-def load_model(model_path: Path):
-    """Load and cache the trained XGBoost model for fast repeated inference."""
-    if not model_path.exists():
-        raise FileNotFoundError(f"Model file not found: {model_path}")
-    return joblib.load(model_path)
+def load_model(local_model_path: Path, model_url: str, cache_dir: Path):
+    """Load and cache model, preferring local file and falling back to Hugging Face download."""
+    if local_model_path.exists():
+        return joblib.load(local_model_path), str(local_model_path)
+
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cached_model_path = cache_dir / local_model_path.name
+
+    if not cached_model_path.exists():
+        try:
+            urlretrieve(model_url, cached_model_path)
+        except URLError as exc:
+            raise FileNotFoundError(
+                "Model was not found locally and could not be downloaded from Hugging Face. "
+                "Set MODEL_URL to a direct .joblib file URL if needed."
+            ) from exc
+
+    return joblib.load(cached_model_path), str(cached_model_path)
 
 
 @st.cache_data
-def load_feature_reference(data_path: Path) -> Tuple[Dict[str, float], Dict[str, float]]:
-    """
-    Build reusable reference values:
-    - feature means as a template for non-user-controlled fields
-    - scaling statistics for temp/hum/windspeed to match training preprocessing
-    """
-    raw_df = load_data(data_path)
-    X, _ = build_features_and_target(data_path)
-
-    template = X.mean(numeric_only=True).to_dict()
-
-    stats = {
-        "temp_mean": float(raw_df["temp"].mean()),
-        "temp_std": float(raw_df["temp"].std(ddof=0)),
-        "hum_mean": float(raw_df["hum"].mean()),
-        "hum_std": float(raw_df["hum"].std(ddof=0)),
-        "windspeed_mean": float(raw_df["windspeed"].mean()),
-        "windspeed_std": float(raw_df["windspeed"].std(ddof=0)),
-    }
-
-    return template, stats
+def load_feature_reference() -> Tuple[Dict[str, float], Dict[str, float]]:
+    """Load static feature template and scaler stats for deployment-safe inference."""
+    return FEATURE_TEMPLATE_DEFAULTS.copy(), SCALER_STATS_DEFAULTS.copy()
 
 
 def _safe_standardize(value: float, mean: float, std: float) -> float:
@@ -100,6 +145,8 @@ def prepare_model_input(
 
 def main() -> None:
     st.set_page_config(page_title="Bike Rental Predictor", page_icon="🚲", layout="wide")
+
+    model_url = normalize_model_url(os.getenv("MODEL_URL", DEFAULT_MODEL_URL), MODEL_PATH.name)
 
     st.markdown(
         """
@@ -240,9 +287,9 @@ def main() -> None:
     )
 
     try:
-        model = load_model(MODEL_PATH)
+        model, loaded_model_path = load_model(MODEL_PATH, model_url, MODEL_CACHE_DIR)
         model_features = list(model.feature_names_in_)
-        template, stats = load_feature_reference(DATA_PATH)
+        template, stats = load_feature_reference()
     except (FileNotFoundError, ValueError) as exc:
         st.error(f"Startup error: {exc}")
         st.stop()
@@ -287,6 +334,7 @@ def main() -> None:
         st.markdown("**Context Tags**")
         season_label = st.selectbox("Season", options=list(season_map.keys()), index=1)
         weather_label = st.selectbox("Weather", options=list(weather_map.keys()), index=0)
+        st.caption(f"Model source: {loaded_model_path}")
 
         st.markdown("---")
         predict_btn = st.button("Predict Rentals", type="primary", use_container_width=True)

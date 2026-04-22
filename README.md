@@ -33,6 +33,8 @@ Core workflow:
 - Every user must run training locally after cloning the project:
 
     python train.py
+    
+- For hosted deployments (for example Streamlit Community Cloud), the app can auto-download the model from Hugging Face using MODEL_URL.
 
 ## Tech Stack
 
@@ -93,6 +95,20 @@ Open the dashboard at:
 
 - http://localhost:8501
 
+### 3.1 Deploy on Streamlit Community Cloud
+
+The app supports remote model loading from Hugging Face.
+
+- Default model URL already configured in [app.py](app.py):
+
+    https://huggingface.co/dinesh-moorthy/bike-rental-model/resolve/main/xgb_bike_model.joblib
+
+- Optional override in Streamlit Cloud settings:
+
+    MODEL_URL=https://huggingface.co/dinesh-moorthy/bike-rental-model/resolve/main/xgb_bike_model.joblib
+
+- If you provide a Hugging Face `.../tree/main` URL, the app converts it automatically to a direct `.../resolve/main/...` download URL.
+
 ### 4. Build Docker image
 
 Use this exact command:
@@ -104,6 +120,10 @@ Use this exact command:
 Use this exact command:
 
     docker run -p 8501:8501 bike-predictor
+
+Optional: override model URL at runtime:
+
+    docker run -p 8501:8501 -e MODEL_URL="https://huggingface.co/dinesh-moorthy/bike-rental-model/resolve/main/xgb_bike_model.joblib" bike-predictor
 
 Then open:
 

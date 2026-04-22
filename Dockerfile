@@ -2,7 +2,10 @@ FROM python:3.10-slim
 
 # Keep Python behavior predictable in containers.
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    STREAMLIT_SERVER_HEADLESS=true \
+    STREAMLIT_BROWSER_GATHER_USAGE_STATS=false \
+    MODEL_URL=https://huggingface.co/dinesh-moorthy/bike-rental-model/resolve/main/xgb_bike_model.joblib
 
 WORKDIR /app
 
